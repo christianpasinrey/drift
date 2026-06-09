@@ -14,7 +14,7 @@ const G = 9.8;
 export const N_WAVES = 56;          // spectral components
 const WIND_ANGLE = 0.28;            // dominant swell heading (radians)
 const WIND_SPEED = 10.0;            // sets the spectrum's peak (~45 m swell)
-const TARGET_SIGMA = 0.62;          // RMS-ish surface energy at sea = 1
+const TARGET_SIGMA = 0.74;          // RMS-ish surface energy at sea = 1
 
 // deterministic PRNG so the spectrum (and the boat's ride) is stable
 function mulberry32(a) {
@@ -34,7 +34,9 @@ const _B = new Float32Array(N_WAVES * 4);   // amp, steep, phase, 0
 (function build() {
   const rng = mulberry32(20260609);
   const Lw = (WIND_SPEED * WIND_SPEED) / G;   // largest wind-driven wavelength scale
-  const Lmin = 2.4, Lmax = 120.0;
+  // shortest wavelength stays above ~2× the ocean mesh spacing, so waves are
+  // never finer than the grid can draw (that aliasing is what shows as edges)
+  const Lmin = 8.0, Lmax = 120.0;
   const raw = [];
   let sigma2 = 0;
 
@@ -71,7 +73,7 @@ const _B = new Float32Array(N_WAVES * 4);   // amp, steep, phase, 0
   const norm = TARGET_SIGMA / Math.sqrt(sigma2);
   let steepSum = 0;
   for (const w of raw) { w.amp *= norm; steepSum += w.k * w.amp * w.steep; }
-  const steepScale = steepSum > 0.95 ? 0.95 / steepSum : 1.0;
+  const steepScale = steepSum > 0.82 ? 0.82 / steepSum : 1.0;  // softer crests, no creasing
 
   raw.forEach((w, i) => {
     w.steep *= steepScale;

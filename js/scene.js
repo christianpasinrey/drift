@@ -95,7 +95,7 @@ export class Scene {
   // ───────── ocean ─────────
   _buildOcean() {
     this.oceanSize = 1500;
-    this.oceanSeg = 256;
+    this.oceanSeg = 384;          // ~3.9u spacing — resolves the 8u shortest wave smoothly
     this.spacing = this.oceanSize / this.oceanSeg;
     const geo = new THREE.PlaneGeometry(this.oceanSize, this.oceanSize, this.oceanSeg, this.oceanSeg);
     geo.rotateX(-Math.PI / 2);
