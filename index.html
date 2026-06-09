@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DRIFT — Open Water</title>
+<meta name="description" content="A real-time WebGL ocean: physically-simulated Gerstner swells, a full day–night sky, and a sailboat that rides the waves." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='82' font-size='80'>⛵</text></svg>" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- ════════ LOADER ════════ -->
+<div id="loader">
+  <div class="loader-mark">
+    <span class="wave-line"></span>
+    <span class="wave-line"></span>
+    <span class="wave-line"></span>
+  </div>
+  <p class="loader-title">DRIFT</p>
+  <p class="loader-sub">putting out to sea…</p>
+</div>
+
+<!-- ════════ CANVAS ════════ -->
+<canvas id="stage"></canvas>
+<div id="grain" aria-hidden="true"></div>
+<div id="vignette" aria-hidden="true"></div>
+
+<!-- ════════ BRAND ════════ -->
+<header id="brand">
+  <h1>Drift</h1>
+  <p>open water · no shore in sight</p>
+</header>
+
+<!-- ════════ CLOCK / STATUS (top right) ════════ -->
+<aside id="status">
+  <div class="clock">
+    <span id="clock-time">06:40</span>
+    <span id="clock-phase">golden hour</span>
+  </div>
+  <div class="status-grid">
+    <div class="st"><b id="st-sun">+4°</b><span>sun elevation</span></div>
+    <div class="st"><b id="st-sea">3</b><span>sea state · ft</span></div>
+    <div class="st"><b id="st-head">N 12°</b><span>heading</span></div>
+  </div>
+</aside>
+
+<!-- ════════ CONTROLS (bottom left) ════════ -->
+<aside id="controls">
+  <div class="ctl">
+    <label for="tod">time of day <span class="ctl-val" id="tod-val">06:40</span></label>
+    <input type="range" id="tod" min="0" max="1440" value="400" step="1" />
+  </div>
+  <div class="ctl">
+    <label for="sea">sea state <span class="ctl-val" id="sea-val">moderate</span></label>
+    <input type="range" id="sea" min="5" max="100" value="42" step="1" />
+  </div>
+  <div class="ctl-toggles">
+    <button class="tgl on" id="tgl-auto"  title="A">auto&nbsp;time</button>
+    <button class="tgl on" id="tgl-gulls" title="G">gulls</button>
+    <button class="tgl"    id="tgl-sound" title="S">♪ sound</button>
+    <button class="tgl"    id="tgl-pause" title="space">pause</button>
+  </div>
+</aside>
+
+<!-- ════════ VIEWS (bottom center) ════════ -->
+<nav id="views">
+  <button data-view="deck"    class="view-btn active">¹ deck</button>
+  <button data-view="horizon" class="view-btn">² horizon</button>
+  <button data-view="drone"   class="view-btn">³ drone</button>
+  <button data-view="wake"    class="view-btn">⁴ wake</button>
+</nav>
+
+<!-- ════════ HINT (bottom right) ════════ -->
+<div id="legend">
+  <span class="legend-hint">drag to look · scroll to zoom · ⛶ for fullscreen</span>
+  <button id="tgl-full" class="tgl tiny">⛶ fullscreen</button>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
