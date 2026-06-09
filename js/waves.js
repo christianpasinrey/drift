@@ -11,14 +11,24 @@ const G = 9.8;
 
 // Each wave: direction (will be normalised), wavelength L (world units),
 // amplitude & steepness "base" values scaled at runtime by sea state,
-// and a speed multiplier. Directions cluster around +X (the wind).
+// and a speed multiplier.
+//
+// To avoid a recognisable repeat the set is deliberately irregular:
+//  • a WIDE directional fan (−84°…+58° off the wind), not a single march;
+//  • two big swells of close wavelength (73 & 61) travelling at slightly
+//    different angles — they beat against each other into long-period
+//    "sets" (the natural swell-and-fade of real open water);
+//  • non-harmonic wavelengths so the combined period is enormous.
 export const WAVES = [
-  { dir: [1.0,  0.18], L: 64, amp: 1.15, steep: 0.55, speed: 1.0 },
-  { dir: [0.82, 0.55], L: 41, amp: 0.78, steep: 0.55, speed: 1.0 },
-  { dir: [0.95, -0.4], L: 23, amp: 0.42, steep: 0.62, speed: 1.1 },
-  { dir: [0.6,  0.85], L: 14, amp: 0.22, steep: 0.62, speed: 1.2 },
-  { dir: [1.0, -0.22], L: 8.2, amp: 0.11, steep: 0.7, speed: 1.4 },
-  { dir: [0.32, 1.0],  L: 5.4, amp: 0.06, steep: 0.7, speed: 1.5 },
+  { dir: [0.9945,  0.1045], L: 73.0, amp: 0.90, steep: 0.45, speed: 1.00 }, // primary swell
+  { dir: [0.9613,  0.2756], L: 61.0, amp: 0.70, steep: 0.45, speed: 0.97 }, // beat partner → sets
+  { dir: [0.8090, -0.5878], L: 47.0, amp: 0.62, steep: 0.50, speed: 1.00 }, // cross swell
+  { dir: [0.8660,  0.5000], L: 33.0, amp: 0.42, steep: 0.55, speed: 1.04 },
+  { dir: [0.9703, -0.2419], L: 23.4, amp: 0.30, steep: 0.60, speed: 1.00 },
+  { dir: [0.5299,  0.8480], L: 16.2, amp: 0.20, steep: 0.62, speed: 1.08 },
+  { dir: [0.4695, -0.8829], L: 11.3, amp: 0.13, steep: 0.65, speed: 1.00 },
+  { dir: [0.9397,  0.3420], L:  7.4, amp: 0.08, steep: 0.70, speed: 1.12 },
+  { dir: [0.1045, -0.9945], L:  4.9, amp: 0.05, steep: 0.70, speed: 1.00 },
 ];
 
 // pre-compute per-wave constants
