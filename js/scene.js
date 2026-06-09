@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import * as THREE from "three";
-import { gerstnerGLSL, sampleWave, SUM_AMP } from "./waves.js";
+import { gerstnerGLSL, sampleWave, WAVE_A, WAVE_B } from "./waves.js";
 import { SKY_GLSL, skyState, makeSkyState } from "./sky.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -113,6 +113,8 @@ export class Scene {
       uSunInt: { value: 1 },
       uNight: { value: 0 },
       uFogDensity: { value: 0.0016 },
+      uWaveA: { value: WAVE_A },
+      uWaveB: { value: WAVE_B },
     };
 
     const mat = new THREE.ShaderMaterial({
@@ -131,7 +133,7 @@ export class Scene {
           gerstner(wp, uTime, uSea, gPos, gN);
           vWorldPos = gPos;
           vN = gN;
-          vCrest = gPos.y / (SUM_AMP * uSea);
+          vCrest = gPos.y / (REF_HEIGHT * uSea);
           gl_Position = projectionMatrix * viewMatrix * vec4(gPos, 1.0);
         }`,
       fragmentShader: /* glsl */`
@@ -151,17 +153,9 @@ export class Scene {
         }
         float fbm(vec2 p){ return 0.55*vnoise(p) + 0.30*vnoise(p*2.1) + 0.15*vnoise(p*4.3); }
         void main(){
+          // all surface detail comes from the moving spectral waves — no static
+          // noise layer painted on the water.
           vec3 N = normalize(vN);
-          // very subtle micro-ripple: the REAL wave normal must dominate so the
-          // sky reflection sits on the wave faces and sweeps as they move.
-          vec2 rp = vWorldPos.xz * 0.5 + uTime * 0.06;
-          float e = 0.6;
-          float h0 = fbm(rp);
-          float hx = fbm(rp + vec2(e, 0.0));
-          float hz = fbm(rp + vec2(0.0, e));
-          N.x -= (hx - h0) * 0.16;
-          N.z -= (hz - h0) * 0.16;
-          N = normalize(N);
           float dist = length(vWorldPos.xz - cameraPosition.xz);
 
           vec3 viewDir = normalize(vWorldPos - cameraPosition);
@@ -210,85 +204,160 @@ export class Scene {
   _buildBoat() {
     const boat = new THREE.Group();
 
-    // hull: extruded boat outline (pointed bow, square stern)
-    const s = new THREE.Shape();
-    s.moveTo(1.85, 0);
-    s.quadraticCurveTo(1.2, 0.62, 0.0, 0.66);
-    s.quadraticCurveTo(-1.0, 0.66, -1.5, 0.52);
-    s.lineTo(-1.5, -0.52);
-    s.quadraticCurveTo(-1.0, -0.66, 0.0, -0.66);
-    s.quadraticCurveTo(1.2, -0.62, 1.85, 0);
-    const hullGeo = new THREE.ExtrudeGeometry(s, {
-      depth: 0.62, bevelEnabled: true, bevelSize: 0.07, bevelThickness: 0.06, bevelSegments: 2,
+    const wood    = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.5,  metalness: 0.05 });
+    const woodLo  = new THREE.MeshStandardMaterial({ color: 0x32200f, roughness: 0.55, metalness: 0.05 });
+    const stripe  = new THREE.MeshStandardMaterial({ color: 0xb44b32, roughness: 0.5 });
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8a6238, roughness: 0.6 });
+    const trim    = new THREE.MeshStandardMaterial({ color: 0xc89b62, roughness: 0.5 });
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.45 });
+    const rigMat  = new THREE.MeshStandardMaterial({ color: 0x15110b, roughness: 0.6 });
+    const sailMat = new THREE.MeshStandardMaterial({
+      color: 0xf1e7d2, roughness: 0.85, side: THREE.DoubleSide,
+      emissive: 0x3a2e1e, emissiveIntensity: 0.22,
     });
-    hullGeo.rotateX(-Math.PI / 2);
-    hullGeo.translate(0, -0.34, 0);
-    const wood = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.55, metalness: 0.05 });
+
+    // hull outline (pointed bow at +x, transom stern at −x)
+    const outline = new THREE.Shape();
+    outline.moveTo(1.9, 0);
+    outline.quadraticCurveTo(1.25, 0.6, 0.0, 0.64);
+    outline.quadraticCurveTo(-1.05, 0.64, -1.52, 0.5);
+    outline.lineTo(-1.52, -0.5);
+    outline.quadraticCurveTo(-1.05, -0.64, 0.0, -0.64);
+    outline.quadraticCurveTo(1.25, -0.6, 1.9, 0);
+
+    // lower hull (dark planking)
+    const hullGeo = new THREE.ExtrudeGeometry(outline, {
+      depth: 0.66, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.07, bevelSegments: 3,
+    });
+    hullGeo.rotateX(-Math.PI / 2); hullGeo.translate(0, -0.42, 0);
     boat.add(new THREE.Mesh(hullGeo, wood));
 
-    // gunwale rim (lighter trim) + deck
-    const deck = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(s, { depth: 0.05, bevelEnabled: false }),
-      new THREE.MeshStandardMaterial({ color: 0x6b4628, roughness: 0.6 })
-    );
-    deck.geometry.rotateX(-Math.PI / 2); deck.position.y = 0.26; deck.scale.set(0.92, 1, 0.92);
+    // waterline "boot" stripe — a thin band at the float line
+    const stripeGeo = new THREE.ExtrudeGeometry(outline, { depth: 0.12, bevelEnabled: false });
+    stripeGeo.rotateX(-Math.PI / 2); stripeGeo.translate(0, -0.06, 0); stripeGeo.scale(1.015, 1, 1.015);
+    boat.add(new THREE.Mesh(stripeGeo, stripe));
+
+    // top rim (gunwale) + recessed deck
+    const rim = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, { depth: 0.07, bevelEnabled: false }), trim);
+    rim.geometry.rotateX(-Math.PI / 2); rim.position.y = 0.18;
+    boat.add(rim);
+    const deck = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, { depth: 0.04, bevelEnabled: false }), deckMat);
+    deck.geometry.rotateX(-Math.PI / 2); deck.position.y = 0.2; deck.scale.set(0.9, 1, 0.86);
     boat.add(deck);
 
+    // cockpit well (a dark recess aft of the mast)
+    const cockpit = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.18, 0.7), woodLo);
+    cockpit.position.set(-0.55, 0.14, 0); boat.add(cockpit);
+
+    // fin keel + bulb below the waterline
+    const keel = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.0, 0.09), woodLo);
+    keel.position.set(-0.15, -1.0, 0); boat.add(keel);
+    const bulb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.5, 4, 8), new THREE.MeshStandardMaterial({ color: 0x1a1a20, roughness: 0.4, metalness: 0.3 }));
+    bulb.rotation.z = Math.PI / 2; bulb.position.set(-0.15, -1.5, 0); boat.add(bulb);
+
+    // rudder + tiller at the transom
+    const rudder = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.06), woodLo);
+    rudder.position.set(-1.55, -0.5, 0); boat.add(rudder);
+    const tiller = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 6), poleMat);
+    tiller.rotation.z = 1.05; tiller.position.set(-1.2, 0.32, 0); boat.add(tiller);
+
     // mast + boom
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.5 });
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 3.0, 10), poleMat);
-    mast.position.set(0.35, 1.7, 0); boat.add(mast);
-    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.7, 8), poleMat);
-    boom.rotation.z = Math.PI / 2; boom.position.set(-0.3, 0.55, 0); boat.add(boom);
+    const mastH = 3.4, mastX = 0.3;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, mastH, 12), poleMat);
+    mast.position.set(mastX, 0.2 + mastH / 2, 0); boat.add(mast);
+    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.85, 8), poleMat);
+    boom.rotation.z = Math.PI / 2; boom.position.set(-0.55, 0.62, 0); boat.add(boom);
+    const mastTopY = 0.2 + mastH;
 
-    // sails (cream, faintly emissive so they catch sunset)
-    const sailMat = new THREE.MeshStandardMaterial({
-      color: 0xf3ead6, roughness: 0.85, side: THREE.DoubleSide,
-      emissive: 0x3a2e1e, emissiveIntensity: 0.25,
-    });
-    const mainsail = this._sailMesh(
-      [0.4, 3.05, 0], [0.4, 0.45, 0], [-1.05, 0.55, 0], 0.45, sailMat);
-    boat.add(mainsail);
-    const jib = this._sailMesh(
-      [0.42, 2.55, 0], [0.42, 0.5, 0], [1.7, 0.32, 0], -0.3, sailMat);
-    boat.add(jib);
+    // standing rigging (forestay, backstay, port/starboard shrouds)
+    const head = [mastX, mastTopY - 0.1, 0];
+    boat.add(this._strut(head, [1.85, 0.16, 0], 0.012, rigMat));   // forestay → bow
+    boat.add(this._strut(head, [-1.45, 0.2, 0], 0.012, rigMat));   // backstay → stern
+    boat.add(this._strut(head, [0.1, 0.2, 0.6], 0.01, rigMat));    // shroud (stbd)
+    boat.add(this._strut(head, [0.1, 0.2, -0.6], 0.01, rigMat));   // shroud (port)
 
-    // pennant at masthead
-    const flag = this._sailMesh(
-      [0.4, 3.05, 0], [0.4, 2.78, 0], [0.95, 2.95, 0], 0.0,
+    // curved sails
+    boat.add(this._curvedSail([mastX + 0.06, mastTopY - 0.15, 0], [mastX + 0.06, 0.62, 0], [-1.4, 0.72, 0], 0.5, sailMat));   // mainsail
+    boat.add(this._curvedSail([mastX + 0.02, mastTopY - 0.55, 0], [mastX + 0.02, 0.5, 0], [1.78, 0.2, 0], -0.34, sailMat));    // jib
+
+    // pennant at the masthead
+    this.flag = this._curvedSail([mastX, mastTopY + 0.02, 0], [mastX, mastTopY - 0.22, 0], [mastX + 0.62, mastTopY - 0.06, 0], 0.0,
       new THREE.MeshStandardMaterial({ color: 0xe0a560, side: THREE.DoubleSide, emissive: 0x6b4012, emissiveIntensity: 0.4 }));
-    this.flag = flag; boat.add(flag);
+    boat.add(this.flag);
 
     // stern lantern (glows at night)
-    const lanternMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.1, 12, 10),
+    this.lanternMesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10),
       new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffb060, emissiveIntensity: 1.0 }));
-    lanternMesh.position.set(-1.35, 0.85, 0);
-    boat.add(lanternMesh);
-    this.lanternMesh = lanternMesh;
+    this.lanternMesh.position.set(-1.45, 0.55, 0);
+    boat.add(this.lanternMesh);
 
-    boat.scale.setScalar(1.0);
+    // soft foam halo where the hull meets the water
+    const foamTex = this._haloTexture();
+    this.foam = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.2, 3.0),
+      new THREE.MeshBasicMaterial({ map: foamTex, transparent: true, opacity: 0.5,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.foam.rotation.x = -Math.PI / 2; this.foam.position.y = 0.02;
+    boat.add(this.foam);
+
     this.boat = boat;
     this.scene.add(boat);
   }
 
-  // build a (slightly billowed) triangular sail from 3 corners
-  _sailMesh(a, b, c, billow, mat) {
-    // subdivide the triangle once and push the centre out in +Z for a soft curve
-    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...c);
-    const mid = new THREE.Vector3().addVectors(A, C).multiplyScalar(0.5).lerp(B, 0.0);
-    mid.z += billow;
-    const verts = [
-      A, B, mid,
-      B, C, mid,
-      C, A, mid,
-    ];
+  // a thin cylinder spanning two points (rigging, struts)
+  _strut(a, b, r, mat) {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+    const dir = new THREE.Vector3().subVectors(B, A);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, dir.length(), 6), mat);
+    m.position.copy(A).add(B).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(UP, dir.normalize());
+    return m;
+  }
+
+  // a triangular sail bowed smoothly into a belly (zero curve at the edges)
+  _curvedSail(head, tack, clew, billow, mat) {
+    const H = new THREE.Vector3(...head), T = new THREE.Vector3(...tack), C = new THREE.Vector3(...clew);
+    const SEG = 5, verts = [], idx = [];
+    // barycentric grid over the triangle; offset along +Z by a belly profile
+    const P = (u, v) => {
+      // u along luff (H→T), v toward clew
+      const a = new THREE.Vector3().lerpVectors(H, T, u);
+      const p = new THREE.Vector3().lerpVectors(a, C, v);
+      const belly = Math.sin(Math.PI * (1 - v)) * Math.sin(Math.PI * (u * (1 - v) + v * 0.5));
+      p.z += billow * belly * (1 - v);
+      return p;
+    };
+    for (let i = 0; i <= SEG; i++)
+      for (let j = 0; j <= SEG - i; j++) verts.push(P(i / SEG, j / SEG));
+    // index the triangular lattice
+    const rowStart = []; let acc = 0;
+    for (let i = 0; i <= SEG; i++) { rowStart.push(acc); acc += SEG - i + 1; }
+    for (let i = 0; i < SEG; i++) {
+      for (let j = 0; j < SEG - i; j++) {
+        const a = rowStart[i] + j, b = rowStart[i + 1] + j, c = a + 1;
+        idx.push(a, b, c);
+        if (j < SEG - i - 1) idx.push(c, b, rowStart[i + 1] + j + 1);
+      }
+    }
     const pos = new Float32Array(verts.length * 3);
     verts.forEach((v, i) => { pos[i*3]=v.x; pos[i*3+1]=v.y; pos[i*3+2]=v.z; });
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.computeVertexNormals();
+    g.setIndex(idx); g.computeVertexNormals();
     return new THREE.Mesh(g, mat);
+  }
+
+  // radial gradient sprite for the waterline foam halo
+  _haloTexture() {
+    const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
+    const ctx = cv.getContext("2d");
+    const g = ctx.createRadialGradient(s/2, s/2, s*0.18, s/2, s/2, s/2);
+    g.addColorStop(0, "rgba(255,255,255,0.0)");
+    g.addColorStop(0.55, "rgba(232,243,255,0.55)");
+    g.addColorStop(0.78, "rgba(210,232,255,0.22)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; return t;
   }
 
   // ───────── gulls ─────────
@@ -327,7 +396,7 @@ export class Scene {
   // todFrac: time of day 0..1 · sea: 0.1..2 · windless freeze when paused
   update(dt, todFrac, sea, paused) {
     const adv = paused ? 0 : dt;
-    this.time += adv;
+    this.time += adv * 0.7;          // calm the (physically fast) long swells
     const t = this.time;
 
     // sun position from time of day
@@ -375,6 +444,12 @@ export class Scene {
     this.boat.quaternion.multiplyQuaternions(this._q1, this._q2);
     // pennant flutter
     if (this.flag) this.flag.rotation.y = Math.sin(t * 4.0) * 0.4;
+    // waterline foam: more in rougher seas, gentle wash pulse
+    if (this.foam) {
+      this.foam.material.opacity = (0.18 + sea * 0.22) * (0.8 + 0.2 * Math.sin(t * 1.6));
+      const ws = 1 + Math.sin(t * 1.1) * 0.04;
+      this.foam.scale.set(ws, ws, 1);
+    }
 
     // ── gulls ──
     const showGulls = this.gulls.visible && sk.night < 0.55;
