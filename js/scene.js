@@ -152,14 +152,15 @@ export class Scene {
         float fbm(vec2 p){ return 0.55*vnoise(p) + 0.30*vnoise(p*2.1) + 0.15*vnoise(p*4.3); }
         void main(){
           vec3 N = normalize(vN);
-          // smooth organic micro-ripples (fbm gradient) → soft moving glitter, no dot grid
-          vec2 rp = vWorldPos.xz * 0.32 + uTime * 0.05;
+          // very subtle micro-ripple: the REAL wave normal must dominate so the
+          // sky reflection sits on the wave faces and sweeps as they move.
+          vec2 rp = vWorldPos.xz * 0.5 + uTime * 0.06;
           float e = 0.6;
           float h0 = fbm(rp);
           float hx = fbm(rp + vec2(e, 0.0));
           float hz = fbm(rp + vec2(0.0, e));
-          N.x -= (hx - h0) * 0.9;
-          N.z -= (hz - h0) * 0.9;
+          N.x -= (hx - h0) * 0.16;
+          N.z -= (hz - h0) * 0.16;
           N = normalize(N);
           float dist = length(vWorldPos.xz - cameraPosition.xz);
 
@@ -169,7 +170,7 @@ export class Scene {
           vec3 skyRefl = skyColor(R, uSunDir, uZenith, uHorizon, uSun, uSunInt, uNight);
 
           float fres = pow(1.0 - max(dot(-viewDir, N), 0.0), 5.0);
-          float reflectivity = mix(0.02, 1.0, fres);
+          float reflectivity = mix(0.02, 0.74, fres);
 
           // depth shading: troughs darker than crests
           vec3 deep = uDeep * mix(0.7, 1.15, clamp(vCrest * 0.5 + 0.5, 0.0, 1.0));
@@ -181,7 +182,7 @@ export class Scene {
 
           // sharp sun glitter
           float spec = pow(max(dot(R, uSunDir), 0.0), 140.0);
-          col += uSun * spec * 1.6 * uSunInt;
+          col += uSun * spec * 1.1 * uSunInt;
 
           // whitecaps: only near steep crests, textured with smooth fbm, scaled by sea state
           float crestMask = smoothstep(0.70, 0.96, vCrest);
