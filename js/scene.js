@@ -29,6 +29,8 @@ export class Scene {
     this._tmpN = new THREE.Vector3();
     this._q1 = new THREE.Quaternion();
     this._q2 = new THREE.Quaternion();
+    this._q3 = new THREE.Quaternion();
+    this._fwd = new THREE.Vector3(1, 0, 0);   // boat local forward (bow at +x)
 
     this._lights();
     this._buildSky();
@@ -202,11 +204,24 @@ export class Scene {
 
   // ───────── sailboat ─────────
   _buildBoat() {
+    const parts = this._makeBoat(0xb44b32);
+    this.boat = parts.group;
+    this.flag = parts.flag;
+    this.lanternMesh = parts.lantern;
+    this.foam = parts.foam;
+    this.bubble = null;            // own speech bubble
+    this.scene.add(this.boat);
+    this.remotes = new Map();      // id → remote boat (other sailors)
+    this.fx = [];                  // live bombs / splashes
+  }
+
+  // build one sailboat; accent colours the waterline stripe (player identity)
+  _makeBoat(accent) {
     const boat = new THREE.Group();
 
     const wood    = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.5,  metalness: 0.05 });
     const woodLo  = new THREE.MeshStandardMaterial({ color: 0x32200f, roughness: 0.55, metalness: 0.05 });
-    const stripe  = new THREE.MeshStandardMaterial({ color: 0xb44b32, roughness: 0.5 });
+    const stripe  = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
     const deckMat = new THREE.MeshStandardMaterial({ color: 0x8a6238, roughness: 0.6 });
     const trim    = new THREE.MeshStandardMaterial({ color: 0xc89b62, roughness: 0.5 });
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.45 });
@@ -281,27 +296,26 @@ export class Scene {
     boat.add(this._curvedSail([mastX + 0.02, mastTopY - 0.55, 0], [mastX + 0.02, 0.5, 0], [1.78, 0.2, 0], -0.34, sailMat));    // jib
 
     // pennant at the masthead
-    this.flag = this._curvedSail([mastX, mastTopY + 0.02, 0], [mastX, mastTopY - 0.22, 0], [mastX + 0.62, mastTopY - 0.06, 0], 0.0,
+    const flag = this._curvedSail([mastX, mastTopY + 0.02, 0], [mastX, mastTopY - 0.22, 0], [mastX + 0.62, mastTopY - 0.06, 0], 0.0,
       new THREE.MeshStandardMaterial({ color: 0xe0a560, side: THREE.DoubleSide, emissive: 0x6b4012, emissiveIntensity: 0.4 }));
-    boat.add(this.flag);
+    boat.add(flag);
 
     // stern lantern (glows at night)
-    this.lanternMesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10),
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10),
       new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffb060, emissiveIntensity: 1.0 }));
-    this.lanternMesh.position.set(-1.45, 0.55, 0);
-    boat.add(this.lanternMesh);
+    lantern.position.set(-1.45, 0.55, 0);
+    boat.add(lantern);
 
     // soft foam halo where the hull meets the water
     const foamTex = this._haloTexture();
-    this.foam = new THREE.Mesh(
+    const foam = new THREE.Mesh(
       new THREE.PlaneGeometry(5.2, 3.0),
       new THREE.MeshBasicMaterial({ map: foamTex, transparent: true, opacity: 0.5,
         blending: THREE.AdditiveBlending, depthWrite: false }));
-    this.foam.rotation.x = -Math.PI / 2; this.foam.position.y = 0.02;
-    boat.add(this.foam);
+    foam.rotation.x = -Math.PI / 2; foam.position.y = 0.02;
+    boat.add(foam);
 
-    this.boat = boat;
-    this.scene.add(boat);
+    return { group: boat, flag, lantern, foam };
   }
 
   // a thin cylinder spanning two points (rigging, struts)
@@ -360,6 +374,85 @@ export class Scene {
     const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; return t;
   }
 
+  // ───────── other sailors (multiplayer) ─────────
+  addRemote(id, name, accent) {
+    if (this.remotes.has(id)) return;
+    const parts = this._makeBoat(accent);
+    const label = this._textSprite(name, "rgba(10,16,22,0.55)", "#e8f0f8", 22);
+    label.position.set(0.3, 4.1, 0);
+    parts.group.add(label);
+    this.scene.add(parts.group);
+    this.remotes.set(id, {
+      ...parts, label, bubble: null,
+      x: 0, z: 0, heading: 0, speed: 0,     // displayed (smoothed)
+      tx: 0, tz: 0, th: 0, fresh: true,      // network targets
+    });
+  }
+  updateRemote(id, x, z, heading, speed) {
+    const r = this.remotes.get(id);
+    if (!r) return;
+    r.tx = x; r.tz = z; r.th = heading; r.speed = speed;
+    if (r.fresh) { r.x = x; r.z = z; r.heading = heading; r.fresh = false; }
+  }
+  removeRemote(id) {
+    const r = this.remotes.get(id);
+    if (!r) return;
+    this.scene.remove(r.group);
+    this.remotes.delete(id);
+  }
+
+  // speech bubble above a boat (id = null → own boat)
+  say(id, text) {
+    const host = id === null ? this : this.remotes.get(id);
+    if (!host) return;
+    const group = id === null ? this.boat : host.group;
+    if (host.bubble) group.remove(host.bubble.sprite);
+    const sprite = this._textSprite(text, "rgba(244,240,230,0.92)", "#1c2630", 26);
+    sprite.position.set(0.3, 4.7, 0);
+    group.add(sprite);
+    host.bubble = { sprite, ttl: 6.5, group };
+  }
+
+  // bomb lobbed from (x0,z0) to (x1,z1); splash on impact
+  launchBomb(x0, z0, x1, z1, dur) {
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0x16140f, roughness: 0.35, metalness: 0.4 }));
+    this.scene.add(ball);
+    const dist = Math.hypot(x1 - x0, z1 - z0);
+    this.fx.push({ kind: "bomb", ball, x0, z0, x1, z1, t: 0, dur, arc: 2.5 + dist * 0.14 });
+  }
+  _splash(x, z) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._haloTex || (this._haloTex = this._haloTexture()),
+      color: 0xeaf4ff, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    s.position.set(x, 0.6, z);
+    s.scale.set(1.5, 1.5, 1);
+    this.scene.add(s);
+    this.fx.push({ kind: "splash", sprite: s, t: 0, dur: 1.1 });
+  }
+
+  // canvas-backed text sprite (name tags, chat bubbles)
+  _textSprite(text, bg, fg, px) {
+    const pad = 18, cv = document.createElement("canvas");
+    const ctx = cv.getContext("2d");
+    ctx.font = `600 ${px}px "Hanken Grotesk", sans-serif`;
+    const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+    cv.width = w; cv.height = px + pad * 1.4;
+    const c2 = cv.getContext("2d");
+    c2.fillStyle = bg;
+    c2.beginPath(); c2.roundRect(0, 0, cv.width, cv.height, 10); c2.fill();
+    c2.font = `600 ${px}px "Hanken Grotesk", sans-serif`;
+    c2.fillStyle = fg; c2.textAlign = "center"; c2.textBaseline = "middle";
+    c2.fillText(text, cv.width / 2, cv.height / 2 + 1);
+    const tex = new THREE.CanvasTexture(cv);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const scale = 0.018;
+    sp.scale.set(cv.width * scale, cv.height * scale, 1);
+    return sp;
+  }
+
   // ───────── gulls ─────────
   _buildGulls() {
     const g = new THREE.Group();
@@ -392,9 +485,29 @@ export class Scene {
     this.scene.add(g);
   }
 
+  // place a hull on the wave surface at (x,z) with the given heading + heel
+  _floatBoat(group, x, z, heading, heel, t, sea) {
+    const ch = Math.cos(heading), sh = Math.sin(heading);
+    const here = sampleWave(x, z, t, sea);
+    group.position.set(x, here.y - 0.12, z);
+    // orient: align up to surface normal, blend bow/stern pitch along the heading
+    this._tmpN.copy(here.normal);
+    const bow = sampleWave(x + ch * 1.6, z - sh * 1.6, t, sea);
+    const aft = sampleWave(x - ch * 1.4, z + sh * 1.4, t, sea);
+    const pitch = (aft.y - bow.y) * 0.25;
+    this._tmpN.x += pitch * ch;
+    this._tmpN.z -= pitch * sh;
+    this._tmpN.normalize();
+    this._q1.setFromUnitVectors(UP, this._tmpN);
+    this._q2.setFromAxisAngle(UP, heading);
+    this._q1.multiply(this._q2);
+    if (heel) { this._q3.setFromAxisAngle(this._fwd, heel); this._q1.multiply(this._q3); }
+    group.quaternion.copy(this._q1);
+  }
+
   // ───────── per-frame update ─────────
-  // todFrac: time of day 0..1 · sea: 0.1..2 · windless freeze when paused
-  update(dt, todFrac, sea, paused) {
+  // todFrac: time of day 0..1 · sea: 0.1..2 · nav: boat position/heading/speed/heel
+  update(dt, todFrac, sea, paused, nav) {
     const adv = paused ? 0 : dt;
     this.time += adv * 0.7;          // calm the (physically fast) long swells
     const t = this.time;
@@ -429,34 +542,57 @@ export class Scene {
     const oz = Math.round(this.camera.position.z / this.spacing) * this.spacing;
     this.waterUniforms.uOffset.value.set(ox, oz);
 
-    // ── float the boat on the real surface ──
-    const here = sampleWave(0, 0, t, sea);
-    const bow = sampleWave(1.6, 0, t, sea);
-    const aft = sampleWave(-1.4, 0, t, sea);
-    this.boat.position.set(0, here.y - 0.12, 0);
-    // orient: align up to surface normal, blend a touch of bow/stern pitch, add heading + slow roll
-    this._tmpN.copy(here.normal);
-    this._tmpN.x += (aft.y - bow.y) * 0.25;          // pitch with the swell
-    this._tmpN.normalize();
-    this._q1.setFromUnitVectors(UP, this._tmpN);
-    const heading = 0.12 * Math.sin(t * 0.05) + Math.sin(t * 0.6) * 0.02;
-    this._q2.setFromAxisAngle(UP, heading);
-    this.boat.quaternion.multiplyQuaternions(this._q1, this._q2);
+    // ── float the boats on the real surface ──
+    const wob = Math.sin(t * 0.6) * 0.02;   // small wave-induced yaw
+    this._floatBoat(this.boat, nav.x, nav.z, nav.heading + wob, nav.heel, t, sea);
+    this.lantern.position.set(nav.x, this.boat.position.y + 0.6, nav.z);
     // pennant flutter
     if (this.flag) this.flag.rotation.y = Math.sin(t * 4.0) * 0.4;
-    // waterline foam: more in rougher seas, gentle wash pulse
+    // waterline foam: more in rougher seas and at speed, gentle wash pulse
+    const spdK = Math.min(1, Math.abs(nav.speed) / 6);
     if (this.foam) {
-      this.foam.material.opacity = (0.18 + sea * 0.22) * (0.8 + 0.2 * Math.sin(t * 1.6));
+      this.foam.material.opacity = (0.18 + sea * 0.22 + spdK * 0.3) * (0.8 + 0.2 * Math.sin(t * 1.6));
       const ws = 1 + Math.sin(t * 1.1) * 0.04;
-      this.foam.scale.set(ws, ws, 1);
+      this.foam.scale.set(ws + spdK * 0.5, ws, 1);
+    }
+
+    // other sailors: ease toward their reported position, ride the same sea
+    for (const r of this.remotes.values()) {
+      const k = Math.min(1, adv * 4);
+      r.x += (r.tx - r.x) * k;
+      r.z += (r.tz - r.z) * k;
+      let dh = r.th - r.heading;
+      dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+      r.heading += dh * k;
+      this._floatBoat(r.group, r.x, r.z, r.heading, 0, t, sea);
+      r.foam.material.opacity = 0.18 + sea * 0.22 + Math.min(1, Math.abs(r.speed) / 6) * 0.3;
+      if (r.bubble && (r.bubble.ttl -= adv) <= 0) { r.group.remove(r.bubble.sprite); r.bubble = null; }
+    }
+    if (this.bubble && (this.bubble.ttl -= adv) <= 0) { this.boat.remove(this.bubble.sprite); this.bubble = null; }
+
+    // ── bombs & splashes ──
+    for (let i = this.fx.length - 1; i >= 0; i--) {
+      const f = this.fx[i];
+      f.t += adv;
+      const k = Math.min(1, f.t / f.dur);
+      if (f.kind === "bomb") {
+        const x = f.x0 + (f.x1 - f.x0) * k, z = f.z0 + (f.z1 - f.z0) * k;
+        f.ball.position.set(x, 1.2 + Math.sin(Math.PI * k) * f.arc, z);
+        if (k >= 1) { this.scene.remove(f.ball); this.fx.splice(i, 1); this._splash(f.x1, f.z1); }
+      } else { // splash
+        const s = 1.5 + k * 9;
+        f.sprite.scale.set(s, s * 0.8, 1);
+        f.sprite.material.opacity = 0.95 * (1 - k);
+        if (k >= 1) { this.scene.remove(f.sprite); this.fx.splice(i, 1); }
+      }
     }
 
     // ── gulls ──
     const showGulls = this.gulls.visible && sk.night < 0.55;
     for (const gd of this.gullData) {
       const a = gd.phase + t * gd.speed * gd.dir;
-      const x = gd.cx + Math.cos(a) * gd.radius;
-      const z = gd.cz + Math.sin(a) * gd.radius;
+      const x = nav.x + gd.cx + Math.cos(a) * gd.radius;
+      const z = nav.z + gd.cz + Math.sin(a) * gd.radius;
       const y = gd.height + Math.sin(t * 1.3 + gd.phase) * 0.7;
       gd.node.position.set(x, y, z);
       gd.node.rotation.y = -a + (gd.dir > 0 ? -Math.PI / 2 : Math.PI / 2);

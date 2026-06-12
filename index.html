@@ -52,7 +52,8 @@
   <div class="status-grid">
     <div class="st"><b id="st-sun">+4°</b><span>sun elevation</span></div>
     <div class="st"><b id="st-sea">3</b><span>sea state · ft</span></div>
-    <div class="st"><b id="st-head">N 12°</b><span>heading</span></div>
+    <div class="st"><b id="st-head">E 090°</b><span>heading</span></div>
+    <div class="st"><b id="st-kn">0.0</b><span>speed · kn</span></div>
   </div>
 </aside>
 
@@ -63,14 +64,25 @@
     <input type="range" id="tod" min="0" max="1440" value="400" step="1" />
   </div>
   <div class="ctl">
-    <label for="sea">sea state <span class="ctl-val" id="sea-val">moderate</span></label>
-    <input type="range" id="sea" min="5" max="100" value="42" step="1" />
+    <label>sea state — autonomous <span class="ctl-val" id="sea-val">moderate</span></label>
   </div>
   <div class="ctl-toggles">
-    <button class="tgl on" id="tgl-auto"  title="A">auto&nbsp;time</button>
+    <button class="tgl on" id="tgl-auto"  title="T">auto&nbsp;time</button>
     <button class="tgl on" id="tgl-gulls" title="G">gulls</button>
-    <button class="tgl"    id="tgl-sound" title="S">♪ sound</button>
+    <button class="tgl"    id="tgl-sound" title="M">♪ sound</button>
     <button class="tgl"    id="tgl-pause" title="space">pause</button>
+  </div>
+</aside>
+
+<!-- ════════ CHAT (right) ════════ -->
+<aside id="chat" class="collapsed offline">
+  <button id="chat-head">⚓ sin conexión · navegación en solitario</button>
+  <div id="chat-body">
+    <div id="chat-log"></div>
+    <div id="chat-row">
+      <select id="chat-to" title="destinatario"><option value="">todos</option></select>
+      <input id="chat-input" placeholder="enter para hablar…" maxlength="140" autocomplete="off" />
+    </div>
   </div>
 </aside>
 
@@ -84,7 +96,7 @@
 
 <!-- ════════ HINT (bottom right) ════════ -->
 <div id="legend">
-  <span class="legend-hint">drag to look · scroll to zoom · ⛶ for fullscreen</span>
+  <span class="legend-hint">WASD / ←↑↓→ sail · F bomb · enter chat · drag to look · scroll to zoom</span>
   <button id="tgl-full" class="tgl tiny">⛶ fullscreen</button>
 </div>
 
